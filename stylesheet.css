@@ -279,15 +279,34 @@
     x-align: center;
 }
 
-.ke-gif-paste-btn {
+.ke-gif-actions-box {
     margin-top: 10px;
+    spacing: 10px;
+}
+
+.ke-gif-paste-btn {
     align-self: center;
 }
 
 .ke-action-button {
-    margin-top: 12px;
     padding: 6px 16px;
     border-radius: 16px;
     background-color: rgba(53, 132, 228, 0.9);
     color: white;
+}
+
+.ke-action-button:hover {
+    background-color: rgba(53, 132, 228, 1.0);
+}
+
+.ke-action-button-secondary {
+    padding: 6px 14px;
+    border-radius: 16px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.ke-action-button-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
 }

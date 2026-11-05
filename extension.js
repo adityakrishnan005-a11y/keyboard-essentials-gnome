@@ -724,10 +724,25 @@ const ClipboardIndicator = GObject.registerClass({
         }, 100);
     }
 
-    pasteGif(url) {
+    pasteGif(gifData, fallbackUrl) {
         this.menu.close();
         const clipboard = St.Clipboard.get_default();
-        clipboard.set_text(CLIPBOARD_TYPE, url);
+
+        if (gifData && typeof gifData === 'object' && gifData.get_size && gifData.get_size() > 0) {
+            clipboard.set_content(CLIPBOARD_TYPE, 'image/gif', gifData);
+            try {
+                const entry = new ClipboardEntry('image/gif', gifData.get_data(), false);
+                if (CACHE_IMAGES) {
+                    this.registry.writeEntryFile(entry);
+                }
+            } catch (e) {
+                console.warn('Keyboard Essentials: Failed to cache GIF in history', e);
+            }
+        } else if (typeof gifData === 'string') {
+            clipboard.set_text(CLIPBOARD_TYPE, gifData);
+        } else if (fallbackUrl) {
+            clipboard.set_text(CLIPBOARD_TYPE, fallbackUrl);
+        }
 
         this._pastingKeypressTimeout = setTimeout(() => {
             if (this.keyboard.purpose === Clutter.InputContentPurpose.TERMINAL) {
@@ -738,12 +753,12 @@ const ClipboardIndicator = GObject.registerClass({
                 this.keyboard.release(Clutter.KEY_Shift_L);
                 this.keyboard.release(Clutter.KEY_Control_L);
             } else {
-                this.keyboard.press(Clutter.KEY_Shift_L);
-                this.keyboard.press(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Insert);
-                this.keyboard.release(Clutter.KEY_Shift_L);
+                this.keyboard.press(Clutter.KEY_Control_L);
+                this.keyboard.press(Clutter.KEY_v);
+                this.keyboard.release(Clutter.KEY_v);
+                this.keyboard.release(Clutter.KEY_Control_L);
             }
-        }, 100);
+        }, 120);
     }
 
     openEmojiPicker() {

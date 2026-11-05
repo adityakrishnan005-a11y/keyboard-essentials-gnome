@@ -150,21 +150,57 @@ export class GifPickerSection {
         }));
         this.previewPanel.add_child(this.previewImageBin);
 
-        // Paste button
-        const pasteBtn = new St.Button({
-            label: _('📋  Paste GIF link'),
-            style_class: 'button ke-action-button ke-gif-paste-btn',
-            can_focus: true,
+        // Action buttons row (Paste GIF + Copy Link)
+        const actionsBox = new St.BoxLayout({
+            ...boxLayoutProps(false),
+            style_class: 'ke-gif-actions-box',
             x_align: Clutter.ActorAlign.CENTER
         });
-        pasteBtn.connect('clicked', () => {
-            if (this._previewGif) {
-                this._addRecent(this._previewGif);
-                this.indicator.pasteGif(this._previewGif.url);
+
+        this.pasteBtn = new St.Button({
+            label: _('📋  Paste GIF'),
+            style_class: 'button ke-action-button ke-gif-paste-btn',
+            can_focus: true
+        });
+        this.pasteBtn.connect('clicked', async () => {
+            if (!this._previewGif) return;
+            const gif = this._previewGif;
+            this.pasteBtn.set_label(_('⏳ Downloading...'));
+            this.pasteBtn.reactive = false;
+
+            try {
+                const targetUrl = gif.gifUrl || gif.url;
+                const gifBytes = await this._downloadGifBytes(targetUrl);
+                this._addRecent(gif);
                 this._closePreview();
+                this.indicator.pasteGif(gifBytes, gif.url);
+            } catch (e) {
+                console.error('Keyboard Essentials: Failed to download GIF', e);
+                this._closePreview();
+                this.indicator.pasteGif(null, gif.url);
+            } finally {
+                this.pasteBtn.set_label(_('📋  Paste GIF'));
+                this.pasteBtn.reactive = true;
             }
         });
-        this.previewPanel.add_child(pasteBtn);
+        actionsBox.add_child(this.pasteBtn);
+
+        const copyLinkBtn = new St.Button({
+            label: _('🔗  Copy Link'),
+            style_class: 'button ke-action-button-secondary ke-gif-link-btn',
+            can_focus: true
+        });
+        copyLinkBtn.connect('clicked', () => {
+            if (this._previewGif) {
+                const url = this._previewGif.url;
+                this._addRecent(this._previewGif);
+                this._closePreview();
+                this.indicator.pasteGif(url, url);
+            }
+        });
+        actionsBox.add_child(copyLinkBtn);
+
+        this.previewPanel.add_child(actionsBox);
 
         this.actor.add_child(this.previewPanel);
 
@@ -264,6 +300,10 @@ export class GifPickerSection {
                     id: item.id,
                     title: item.title || 'GIF',
                     url: item.images?.original?.url || item.url,
+                    gifUrl: item.images?.downsized?.url ||
+                            item.images?.downsized_medium?.url ||
+                            item.images?.original?.url ||
+                            item.url,
                     thumbUrl: item.images?.fixed_width?.url ||
                               item.images?.downsized?.url ||
                               item.images?.fixed_height?.url ||
@@ -472,6 +512,56 @@ export class GifPickerSection {
             }
         } catch (e) {
             // failed to cache
+        }
+        return null;
+    }
+
+    async _downloadGifBytes(url) {
+        if (!url) return null;
+
+        const checksum = GLib.compute_checksum_for_string(
+            GLib.ChecksumType.MD5,
+            url,
+            -1
+        );
+        const filename = `${checksum}.gif`;
+        const localPath = GLib.build_filenamev([this._getThumbCacheDir(), filename]);
+        const localFile = Gio.File.new_for_path(localPath);
+
+        if (localFile.query_exists(null)) {
+            try {
+                const [ok, contents] = localFile.load_contents(null);
+                if (ok && contents) {
+                    return GLib.Bytes.new(contents);
+                }
+            } catch (e) {
+                console.warn('Keyboard Essentials: Failed to read cached GIF', e);
+            }
+        }
+
+        try {
+            const message = Soup.Message.new('GET', url);
+            const bytes = await this._httpSession.send_and_read_async(
+                message,
+                GLib.PRIORITY_DEFAULT,
+                null
+            );
+            if (bytes && !this._destroyed) {
+                try {
+                    localFile.replace_contents(
+                        bytes.get_data(),
+                        null,
+                        false,
+                        Gio.FileCreateFlags.REPLACE_DESTINATION,
+                        null
+                    );
+                } catch (we) {
+                    console.warn('Keyboard Essentials: Failed to save GIF to cache', we);
+                }
+                return bytes;
+            }
+        } catch (e) {
+            console.error('Keyboard Essentials: Failed to download GIF', e);
         }
         return null;
     }
