@@ -1,10 +1,12 @@
 import Clutter from 'gi://Clutter';
+import Cogl from 'gi://Cogl';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup';
 import St from 'gi://St';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
-import { boxLayoutProps } from './compat.js';
+import { boxLayoutProps, getDefaultBackend } from './compat.js';
 import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const GIPHY_DEFAULT_KEY = 'dc6zaTOxFJmzC';
@@ -135,14 +137,18 @@ export class GifPickerSection {
         previewHeader.add_child(this.previewTitle);
         this.previewPanel.add_child(previewHeader);
 
-        // Large preview image
-        this.previewImage = new St.Icon({
+        // Large preview image — use a Bin container so we can swap content
+        this.previewImageBin = new St.Bin({
             style_class: 'ke-gif-preview-image',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.CENTER
+        });
+        this.previewImageBin.set_child(new St.Icon({
             icon_name: 'video-x-generic-symbolic',
             icon_size: 64,
             x_align: Clutter.ActorAlign.CENTER
-        });
-        this.previewPanel.add_child(this.previewImage);
+        }));
+        this.previewPanel.add_child(this.previewImageBin);
 
         // Paste button
         const pasteBtn = new St.Button({
@@ -184,20 +190,20 @@ export class GifPickerSection {
         this._previewGif = gif;
         this.previewTitle.set_text(gif.title || 'GIF');
         // Reset to placeholder while loading
-        this.previewImage.gicon = null;
-        this.previewImage.icon_name = 'video-x-generic-symbolic';
-        this.previewImage.icon_size = 64;
+        this.previewImageBin.set_child(new St.Icon({
+            icon_name: 'video-x-generic-symbolic',
+            icon_size: 64,
+            x_align: Clutter.ActorAlign.CENTER
+        }));
 
         this.scrollView.visible = false;
         this.previewPanel.visible = true;
 
-        // Load larger image for preview (use original URL or thumbUrl)
-        const previewUrl = gif.url || gif.thumbUrl;
+        // Load larger image for preview
+        const previewUrl = gif.previewUrl || gif.thumbUrl || gif.url;
         this._loadThumbnail(previewUrl).then(localPath => {
             if (this._destroyed || !this._previewGif || !localPath) return;
-            this.previewImage.gicon = Gio.icon_new_for_string(localPath);
-            this.previewImage.icon_name = null;
-            this.previewImage.icon_size = 300;
+            this.previewImageBin.set_child(this._makeImageWidget(localPath, 356, 220));
         }).catch(() => {});
     }
 
@@ -258,10 +264,13 @@ export class GifPickerSection {
                     id: item.id,
                     title: item.title || 'GIF',
                     url: item.images?.original?.url || item.url,
-                    thumbUrl: item.images?.fixed_width_small?.url ||
-                              item.images?.preview_gif?.url ||
-                              item.images?.fixed_height_small?.url ||
-                              item.images?.original?.url
+                    thumbUrl: item.images?.fixed_width?.url ||
+                              item.images?.downsized?.url ||
+                              item.images?.fixed_height?.url ||
+                              item.images?.original?.url,
+                    previewUrl: item.images?.downsized_medium?.url ||
+                                item.images?.downsized?.url ||
+                                item.images?.original?.url
                 }));
                 this._displayGifs(parsed);
             } else if (json.data && Array.isArray(json.data) && json.data.length === 0) {
@@ -320,6 +329,71 @@ export class GifPickerSection {
         this.grid.add_child(box);
     }
 
+    // --------------- Image rendering (GNOME 48–51 safe) ---------------
+
+    /**
+     * Load a local image file and return an St.Bin containing a properly
+     * sized image using St.ImageContent (the GNOME 48+ replacement for
+     * the removed Clutter.Image).  Falls back to St.Icon on any error.
+     */
+    _makeImageWidget(localPath, width, height) {
+        try {
+            const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                localPath, width, height, true   // preserve aspect ratio
+            );
+            if (!pixbuf) throw new Error('null pixbuf');
+
+            const pw = pixbuf.get_width();
+            const ph = pixbuf.get_height();
+            const rowstride = pixbuf.get_rowstride();
+            const format = pixbuf.get_has_alpha()
+                ? Cogl.PixelFormat.RGBA_8888
+                : Cogl.PixelFormat.RGB_888;
+            const bytes = pixbuf.read_pixel_bytes();
+
+            const content = St.ImageContent.new_with_preferred_size(pw, ph);
+
+            // set_bytes gained a CoglContext arg in GNOME 48+ (6 args vs old 5)
+            let coglCtx = null;
+            try {
+                const backend = getDefaultBackend();
+                coglCtx = backend?.get_cogl_context?.() ?? null;
+            } catch (be) {}
+            if (!coglCtx) {
+                try {
+                    coglCtx = global.stage?.context?.get_backend?.()?.get_cogl_context?.() ?? null;
+                } catch (ce) {}
+            }
+
+            if (content.set_bytes.length >= 6 && coglCtx) {
+                content.set_bytes(coglCtx, bytes, format, pw, ph, rowstride);
+            } else {
+                content.set_bytes(bytes, format, pw, ph, rowstride);
+            }
+
+            const bin = new St.Bin({
+                width,
+                height,
+                x_expand: true,
+                x_align: Clutter.ActorAlign.CENTER,
+                y_align: Clutter.ActorAlign.CENTER,
+                content,
+                content_gravity: Clutter.ContentGravity.RESIZE_ASPECT
+            });
+            return bin;
+        } catch (e) {
+            console.warn('Keyboard Essentials: _makeImageWidget error, falling back to St.Icon', e);
+            // Fallback: St.Icon with large icon_size
+            return new St.Icon({
+                gicon: Gio.icon_new_for_string(localPath),
+                icon_size: Math.min(width, height),
+                style_class: 'ke-gif-image'
+            });
+        }
+    }
+
+    // -------------------------------------------------------------------
+
     _displayGifs(gifList) {
         this.grid.destroy_all_children();
         this._closePreview();
@@ -335,6 +409,9 @@ export class GifPickerSection {
         }
 
         // Single-column layout — one large card per row
+        const THUMB_W = 356;
+        const THUMB_H = 180;
+
         gifList.forEach(gif => {
             const btn = new St.Button({
                 style_class: 'ke-gif-thumb-btn',
@@ -343,28 +420,19 @@ export class GifPickerSection {
                 accessible_name: gif.title
             });
 
-            const placeholder = new St.Icon({
+            btn.set_child(new St.Icon({
                 icon_name: 'video-x-generic-symbolic',
                 style_class: 'ke-gif-placeholder',
                 icon_size: 48
-            });
-            btn.set_child(placeholder);
+            }));
 
-            // Click → open preview panel instead of pasting directly
-            btn.connect('clicked', () => {
-                this._openPreview(gif);
-            });
-
+            btn.connect('clicked', () => this._openPreview(gif));
             this.grid.add_child(btn);
 
-            // Async thumbnail load
+            // Async: download thumb then render with proper scaling
             this._loadThumbnail(gif.thumbUrl).then(localPath => {
                 if (this._destroyed || !localPath) return;
-                const thumbIcon = new St.Icon({
-                    gicon: Gio.icon_new_for_string(localPath),
-                    style_class: 'ke-gif-image'
-                });
-                btn.set_child(thumbIcon);
+                btn.set_child(this._makeImageWidget(localPath, THUMB_W, THUMB_H));
             }).catch(() => {});
         });
     }
