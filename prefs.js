@@ -3,13 +3,14 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import { PrefsFields } from './constants.js';
 
 export default class ClipboardIndicatorPreferences extends ExtensionPreferences {
     fillPreferencesWindow (window) {
         window._settings = this.getSettings();
-        const settingsUI = new Settings(window._settings);
+        const settingsUI = new Settings(window._settings, this.path);
 
         const tabs = [
             { title: _('UI'),            iconName: 'view-grid-symbolic',               groups: [settingsUI.ui, settingsUI.item_actions] },
@@ -20,6 +21,8 @@ export default class ClipboardIndicatorPreferences extends ExtensionPreferences 
             { title: _('Topbar'),        iconName: 'edit-paste-symbolic',              groups: [settingsUI.topbar] },
             { title: _('Notifications'), iconName: 'emoji-objects-symbolic',           groups: [settingsUI.notifications] },
             { title: _('Shortcuts'),     iconName: 'input-keyboard-symbolic',          groups: [settingsUI.shortcuts] },
+            { title: _('Emoji'),         iconName: 'face-smile-symbolic',              groups: [settingsUI.emoji] },
+            { title: _('GIF'),           iconName: 'video-x-generic-symbolic',         groups: [settingsUI.gif] },
         ];
 
         window.set_default_size(700, 650);
@@ -33,8 +36,9 @@ export default class ClipboardIndicatorPreferences extends ExtensionPreferences 
 }
 
 class Settings {
-    constructor (schema) {
+    constructor (schema, extensionPath) {
         this.schema = schema;
+        this.extensionPath = extensionPath;
 
         this.field_size = new Adw.SpinRow({
             title: _("History Size"),
@@ -313,6 +317,196 @@ class Settings {
         this.item_actions.add(this.field_show_edit_button);
         this.item_actions.add(this.field_show_preview_button);
 
+        // Emoji settings
+        this.emoji = new Adw.PreferencesGroup({
+            title: _('Emoji Support'),
+            description: _('Lightweight offline emoji picker with quick search and category browsing.')
+        });
+
+        this.field_emoji_enabled = new Adw.SwitchRow({
+            title: _('Enable Emoji Picker'),
+            subtitle: _('Show Emoji tab in the keyboard essentials menu')
+        });
+
+        const emojiDataPath = GLib.build_filenamev([GLib.get_user_data_dir(), 'keyboard-essentials', 'emoji-data.json']);
+        const emojiFile = Gio.File.new_for_path(emojiDataPath);
+
+        this.field_emoji_database_row = new Adw.ActionRow({
+            title: _('Offline Emoji Database'),
+            subtitle: emojiFile.query_exists(null)
+                ? _('Installed (1,015 offline emojis, ~168 KB)')
+                : _('Not installed. Download to enable offline emoji search.')
+        });
+
+        const emojiDbBtn = new Gtk.Button({
+            valign: Gtk.Align.CENTER
+        });
+
+        const updateEmojiDbUi = () => {
+            const exists = emojiFile.query_exists(null);
+            this.field_emoji_database_row.set_subtitle(
+                exists
+                    ? _('Installed (1,015 offline emojis, ~168 KB)')
+                    : _('Not installed. Download to enable offline emoji search.')
+            );
+            emojiDbBtn.set_label(exists ? _('Delete') : _('Download (~168 KB)'));
+            if (exists) {
+                emojiDbBtn.remove_css_class('suggested-action');
+                emojiDbBtn.add_css_class('destructive-action');
+            } else {
+                emojiDbBtn.remove_css_class('destructive-action');
+                emojiDbBtn.add_css_class('suggested-action');
+            }
+        };
+
+        const downloadEmojiData = () => {
+            emojiDbBtn.set_sensitive(false);
+            emojiDbBtn.set_label(_('Installing...'));
+
+            let sourceFile = null;
+            if (this.extensionPath) {
+                const bundled = Gio.File.new_for_path(GLib.build_filenamev([this.extensionPath, 'data', 'emoji-data.json']));
+                if (bundled.query_exists(null)) {
+                    sourceFile = bundled;
+                }
+            }
+
+            const targetDir = emojiFile.get_parent();
+            if (!targetDir.query_exists(null)) {
+                targetDir.make_directory_with_parents(null);
+            }
+
+            if (sourceFile) {
+                try {
+                    sourceFile.copy(emojiFile, Gio.FileCopyFlags.OVERWRITE, null, null);
+                    updateEmojiDbUi();
+                    emojiDbBtn.set_sensitive(true);
+                    return;
+                } catch (e) {
+                    console.error('Failed to copy bundled emoji data', e);
+                }
+            }
+
+            try {
+                const proc = Gio.Subprocess.new(
+                    ['curl', '-sSL', 'https://raw.githubusercontent.com/adityakrishnan005-a11y/keyboard-essentials-gnome/master/data/emoji-data.json', '-o', emojiDataPath],
+                    Gio.SubprocessFlags.NONE
+                );
+                proc.wait_async(null, (_proc, res) => {
+                    emojiDbBtn.set_sensitive(true);
+                    updateEmojiDbUi();
+                });
+            } catch (err) {
+                console.error('Failed to download emoji data', err);
+                emojiDbBtn.set_sensitive(true);
+                updateEmojiDbUi();
+            }
+        };
+
+        emojiDbBtn.connect('clicked', () => {
+            if (emojiFile.query_exists(null)) {
+                try {
+                    emojiFile.delete(null);
+                } catch (e) {}
+                updateEmojiDbUi();
+            } else {
+                downloadEmojiData();
+            }
+        });
+
+        updateEmojiDbUi();
+        this.field_emoji_database_row.add_suffix(emojiDbBtn);
+
+        this.field_emoji_enabled.connect('notify::active', (widget) => {
+            if (widget.active && !emojiFile.query_exists(null)) {
+                downloadEmojiData();
+            }
+        });
+
+        const emojiShortcutRow = new Adw.ActionRow({
+            title: _('Emoji picker shortcut')
+        });
+        emojiShortcutRow.add_suffix(this.#createShortcutButton(PrefsFields.EMOJI_HOTKEY));
+
+        this.emoji.add(this.field_emoji_enabled);
+        this.emoji.add(this.field_emoji_database_row);
+        this.emoji.add(emojiShortcutRow);
+
+        // GIF settings
+        this.gif = new Adw.PreferencesGroup({
+            title: _('GIF Support'),
+            description: _('Search and copy animated GIFs. Disabled by default to stay lightweight.')
+        });
+
+        this.field_gif_enabled = new Adw.SwitchRow({
+            title: _('Enable GIF Picker'),
+            subtitle: _('Show GIF tab in the keyboard essentials menu')
+        });
+
+        this.field_gif_provider = new Adw.ComboRow({
+            title: _('GIF Provider'),
+            model: new Gtk.StringList({
+                strings: [_('Giphy'), _('Disabled')]
+            })
+        });
+
+        const currentProvider = this.schema.get_string(PrefsFields.GIF_PROVIDER);
+        this.field_gif_provider.set_selected(currentProvider === 'giphy' ? 0 : 1);
+        this.field_gif_provider.connect('notify::selected', () => {
+            const idx = this.field_gif_provider.get_selected();
+            this.schema.set_string(PrefsFields.GIF_PROVIDER, idx === 0 ? 'giphy' : 'disabled');
+        });
+
+        this.field_gif_api_key = new Adw.EntryRow({
+            title: _('Custom Giphy API Key (Optional)'),
+            show_apply_button: true
+        });
+
+        this.field_gif_recent_limit = new Adw.SpinRow({
+            title: _('Recent GIFs Limit'),
+            subtitle: _('Maximum number of recently used GIFs to remember locally'),
+            adjustment: new Gtk.Adjustment({
+                lower: 5,
+                upper: 100,
+                step_increment: 5
+            })
+        });
+
+        this.field_gif_clear_cache_row = new Adw.ActionRow({
+            title: _('Clear GIF Cache'),
+            subtitle: _('Delete cached thumbnails and recent GIF history')
+        });
+        const clearGifBtn = new Gtk.Button({
+            label: _('Clear Cache'),
+            valign: Gtk.Align.CENTER
+        });
+        clearGifBtn.connect('clicked', () => {
+            try {
+                const gifCache = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_cache_dir(), 'keyboard-essentials', 'gifs']));
+                if (gifCache.query_exists(null)) {
+                    const enumerator = gifCache.enumerate_children('standard::name', Gio.FileQueryInfoFlags.NONE, null);
+                    let info;
+                    while ((info = enumerator.next_file(null)) !== null) {
+                        gifCache.get_child(info.get_name()).delete(null);
+                    }
+                }
+                const recentFile = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_data_dir(), 'keyboard-essentials', 'recent-gifs.json']));
+                if (recentFile.query_exists(null)) {
+                    recentFile.delete(null);
+                }
+                clearGifBtn.set_label(_('Cleared!'));
+            } catch (e) {
+                console.error(e);
+            }
+        });
+        this.field_gif_clear_cache_row.add_suffix(clearGifBtn);
+
+        this.gif.add(this.field_gif_enabled);
+        this.gif.add(this.field_gif_provider);
+        this.gif.add(this.field_gif_api_key);
+        this.gif.add(this.field_gif_recent_limit);
+        this.gif.add(this.field_gif_clear_cache_row);
+
         this.#buildShorcuts(this.shortcuts);
 
         this.schema.bind(PrefsFields.HISTORY_SIZE, this.field_size, 'value', Gio.SettingsBindFlags.DEFAULT);
@@ -351,6 +545,10 @@ class Settings {
         this.schema.bind(PrefsFields.SHOW_PIN_BUTTON, this.field_show_pin_button, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.SHOW_EDIT_BUTTON, this.field_show_edit_button, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.SHOW_PREVIEW_BUTTON, this.field_show_preview_button, 'active', Gio.SettingsBindFlags.DEFAULT);
+        this.schema.bind(PrefsFields.EMOJI_ENABLED, this.field_emoji_enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
+        this.schema.bind(PrefsFields.GIF_ENABLED, this.field_gif_enabled, 'active', Gio.SettingsBindFlags.DEFAULT);
+        this.schema.bind(PrefsFields.GIF_API_KEY, this.field_gif_api_key, 'text', Gio.SettingsBindFlags.DEFAULT);
+        this.schema.bind(PrefsFields.GIF_RECENT_LIMIT, this.field_gif_recent_limit, 'value', Gio.SettingsBindFlags.DEFAULT);
 
         this.field_clear_history_interval.set_sensitive(this.field_clear_history_on_interval.active);
         this.#fetchExludedAppsList();
@@ -375,7 +573,8 @@ class Settings {
         [PrefsFields.BINDING_TOGGLE_MENU]: _("Toggle the menu"),
         [PrefsFields.BINDING_CLEAR_HISTORY]: _("Clear history"),
         [PrefsFields.BINDING_PREV_ENTRY]: _("Previous entry"),
-        [PrefsFields.BINDING_NEXT_ENTRY]: _("Next entry")
+        [PrefsFields.BINDING_NEXT_ENTRY]: _("Next entry"),
+        [PrefsFields.EMOJI_HOTKEY]: _("Open emoji picker")
     };
 
     #buildShorcuts (group) {

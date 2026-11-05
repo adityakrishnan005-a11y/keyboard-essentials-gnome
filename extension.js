@@ -18,6 +18,8 @@ import { Registry, ClipboardEntry } from './registry.js';
 import { DialogManager } from './confirmDialog.js';
 import { PrefsFields } from './constants.js';
 import { Keyboard } from './keyboard.js';
+import { EmojiPickerSection } from './emojiPicker.js';
+import { GifPickerSection } from './gifPicker.js';
 
 const CLIPBOARD_TYPE = St.ClipboardType.CLIPBOARD;
 
@@ -63,6 +65,9 @@ let SHOW_TAG_BUTTON           = true;
 let SHOW_PIN_BUTTON           = true;
 let SHOW_EDIT_BUTTON          = true;
 let SHOW_PREVIEW_BUTTON       = true;
+let EMOJI_ENABLED             = false;
+let GIF_ENABLED               = false;
+let GIF_PROVIDER              = 'disabled';
 
 export default class ClipboardIndicatorExtension extends Extension {
     enable () {
@@ -103,6 +108,14 @@ const ClipboardIndicator = GObject.registerClass({
         this.keyboard.destroy();
         this._cursorActor.destroy();
         this._cursorActor = null;
+        if (this.emojiPicker) {
+            this.emojiPicker.destroy();
+            this.emojiPicker = null;
+        }
+        if (this.gifPicker) {
+            this.gifPicker.destroy();
+            this.gifPicker = null;
+        }
 
         super.destroy();
     }
@@ -120,6 +133,9 @@ const ClipboardIndicator = GObject.registerClass({
 
         this.extension = extension;
         this._destroyed = false;
+        this.currentTab = 'clipboard';
+        this.emojiPicker = null;
+        this.gifPicker = null;
         this.registry = new Registry(extension);
         this.keyboard = new Keyboard();
         this._settingsChangedId = null;
@@ -227,6 +243,45 @@ const ClipboardIndicator = GObject.registerClass({
         let lastIdx = clipHistory.length - 1;
         let clipItemsArr = this.clipItemsRadioGroup;
 
+        // Tab switcher row
+        this.tabBarItem = new PopupMenu.PopupBaseMenuItem({
+            reactive: true,
+            can_focus: false,
+            style_class: 'ke-tab-menu-item'
+        });
+
+        this.tabBar = new St.BoxLayout({
+            ...boxLayoutProps(false),
+            style_class: 'ke-tab-bar',
+            x_expand: true
+        });
+
+        this.tabClipboard = new St.Button({
+            label: _('Clipboard'),
+            style_class: 'ke-tab-btn active',
+            can_focus: true
+        });
+        this.tabClipboard.connect('clicked', () => this._switchTab('clipboard'));
+
+        this.tabEmoji = new St.Button({
+            label: _('Emoji'),
+            style_class: 'ke-tab-btn',
+            can_focus: true
+        });
+        this.tabEmoji.connect('clicked', () => this._switchTab('emoji'));
+
+        this.tabGif = new St.Button({
+            label: _('GIF'),
+            style_class: 'ke-tab-btn',
+            can_focus: true
+        });
+        this.tabGif.connect('clicked', () => this._switchTab('gif'));
+
+        this.tabBar.add_child(this.tabClipboard);
+        this.tabBar.add_child(this.tabEmoji);
+        this.tabBar.add_child(this.tabGif);
+        this.tabBarItem.add_child(this.tabBar);
+
         /* This create the search entry, which is add to a menuItem.
         The searchEntry is connected to the function for research.
         The menu itself is connected to some shitty hack in order to
@@ -261,6 +316,10 @@ const ClipboardIndicator = GObject.registerClass({
                     const item = this._focusItemOnOpen;
                     this._focusItemOnOpen = null;
                     global.stage.set_key_focus(item.actor);
+                } else if (this.currentTab === 'emoji' && this.emojiPicker) {
+                    this.emojiPicker.focusSearch();
+                } else if (this.currentTab === 'gif' && this.gifPicker) {
+                    this.gifPicker.focusSearch();
                 } else if (SHOW_SEARCH_BAR && this.clipItemsRadioGroup.length > 0) {
                     this.searchEntry.set_text('');
                     global.stage.set_key_focus(this.searchEntry);
@@ -414,6 +473,12 @@ const ClipboardIndicator = GObject.registerClass({
         if (this._destroyed) {
             return;
         }
+        if (this.tabBarItem && this.menu.box.contains(this.tabBarItem))
+            this.menu.box.remove_child(this.tabBarItem);
+        if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor))
+            this.menu.box.remove_child(this.emojiPicker.actor);
+        if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor))
+            this.menu.box.remove_child(this.gifPicker.actor);
         if (this.menu.box.contains(this._entryItem)) this.menu.box.remove_child(this._entryItem);
         if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
         if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
@@ -429,6 +494,89 @@ const ClipboardIndicator = GObject.registerClass({
             return;
         }
 
+        const tabsEnabled = EMOJI_ENABLED || GIF_ENABLED;
+
+        if (tabsEnabled) {
+            if (!this.menu.box.contains(this.tabBarItem)) {
+                this.menu.box.insert_child_at_index(this.tabBarItem, 0);
+            }
+            this.tabEmoji.visible = EMOJI_ENABLED;
+            this.tabGif.visible = GIF_ENABLED;
+        } else {
+            if (this.menu.box.contains(this.tabBarItem)) {
+                this.menu.box.remove_child(this.tabBarItem);
+            }
+            this.currentTab = 'clipboard';
+        }
+
+        if (this.currentTab === 'emoji') {
+            if (this.menu.box.contains(this._entryItem)) this.menu.box.remove_child(this._entryItem);
+            if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
+            if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
+            if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
+            if (this.clearMenuItem?.actor && this.menu.box.contains(this.clearMenuItem.actor))
+                this.menu.box.remove_child(this.clearMenuItem.actor);
+            if (this.privateModeMenuItem?.actor) this.privateModeMenuItem.actor.visible = false;
+            this.scrollViewFavoritesMenuSection.actor.visible = false;
+            this.scrollViewMenuSection.actor.visible = false;
+
+            if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor)) {
+                this.menu.box.remove_child(this.gifPicker.actor);
+            }
+
+            const emojiPicker = this._getEmojiPicker();
+            if (!this.menu.box.contains(emojiPicker.actor)) {
+                this.menu.box.insert_child_at_index(emojiPicker.actor, 1);
+            }
+            emojiPicker.actor.visible = true;
+
+            if (this.menu.box.contains(this.settingsMenuItem?.actor))
+                this.menu.box.remove_child(this.settingsMenuItem.actor);
+            if (SHOW_SETTINGS_BUTTON && this.settingsMenuItem) {
+                this.menu.box.insert_child_at_index(this.settingsMenuItem.actor, this.menu.box.get_n_children());
+            }
+            return;
+        }
+
+        if (this.currentTab === 'gif') {
+            if (this.menu.box.contains(this._entryItem)) this.menu.box.remove_child(this._entryItem);
+            if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
+            if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
+            if (this.menu.box.contains(this.emptyStateSection)) this.menu.box.remove_child(this.emptyStateSection);
+            if (this.clearMenuItem?.actor && this.menu.box.contains(this.clearMenuItem.actor))
+                this.menu.box.remove_child(this.clearMenuItem.actor);
+            if (this.privateModeMenuItem?.actor) this.privateModeMenuItem.actor.visible = false;
+            this.scrollViewFavoritesMenuSection.actor.visible = false;
+            this.scrollViewMenuSection.actor.visible = false;
+
+            if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor)) {
+                this.menu.box.remove_child(this.emojiPicker.actor);
+            }
+
+            const gifPicker = this._getGifPicker();
+            if (!this.menu.box.contains(gifPicker.actor)) {
+                this.menu.box.insert_child_at_index(gifPicker.actor, 1);
+            }
+            gifPicker.actor.visible = true;
+
+            if (this.menu.box.contains(this.settingsMenuItem?.actor))
+                this.menu.box.remove_child(this.settingsMenuItem.actor);
+            if (SHOW_SETTINGS_BUTTON && this.settingsMenuItem) {
+                this.menu.box.insert_child_at_index(this.settingsMenuItem.actor, this.menu.box.get_n_children());
+            }
+            return;
+        }
+
+        // CurrentTab is 'clipboard'
+        if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor)) {
+            this.menu.box.remove_child(this.emojiPicker.actor);
+        }
+        if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor)) {
+            this.menu.box.remove_child(this.gifPicker.actor);
+        }
+        this.scrollViewFavoritesMenuSection.actor.visible = !PRIVATEMODE;
+        this.scrollViewMenuSection.actor.visible = !PRIVATEMODE;
+
         // Remove empty-state if items exist
         if (this.clipItemsRadioGroup.length > 0 &&
             this.menu.box.contains(this.emptyStateSection)) {
@@ -436,9 +584,10 @@ const ClipboardIndicator = GObject.registerClass({
         }
 
         // Search bar
+        const searchIndex = tabsEnabled ? 1 : 0;
         if (SHOW_SEARCH_BAR && !PRIVATEMODE) {
             if (!this.menu.box.contains(this._entryItem))
-                this.menu.box.insert_child_at_index(this._entryItem, 0);
+                this.menu.box.insert_child_at_index(this._entryItem, searchIndex);
         } else {
             if (this.menu.box.contains(this._entryItem))
                 this.menu.box.remove_child(this._entryItem);
@@ -496,6 +645,92 @@ const ClipboardIndicator = GObject.registerClass({
             this.menu.box.insert_child_at_index(this.settingsMenuItem.actor, index++);
         if (SHOW_CLEAR_HISTORY_BUTTON && this.clearMenuItem && !PRIVATEMODE)
             this.menu.box.insert_child_at_index(this.clearMenuItem.actor, index++);
+    }
+
+    _switchTab(tabName) {
+        this.currentTab = tabName;
+        this.tabClipboard.remove_style_class_name('active');
+        this.tabEmoji.remove_style_class_name('active');
+        this.tabGif.remove_style_class_name('active');
+
+        if (tabName === 'clipboard') {
+            this.tabClipboard.add_style_class_name('active');
+        } else if (tabName === 'emoji') {
+            this.tabEmoji.add_style_class_name('active');
+            const picker = this._getEmojiPicker();
+            picker.loadData();
+            picker.focusSearch();
+        } else if (tabName === 'gif') {
+            this.tabGif.add_style_class_name('active');
+            const picker = this._getGifPicker();
+            picker.initContent();
+            picker.focusSearch();
+        }
+
+        this.#showElements();
+    }
+
+    _getEmojiPicker() {
+        if (!this.emojiPicker) {
+            this.emojiPicker = new EmojiPickerSection(this);
+        }
+        return this.emojiPicker;
+    }
+
+    _getGifPicker() {
+        if (!this.gifPicker) {
+            this.gifPicker = new GifPickerSection(this);
+        }
+        return this.gifPicker;
+    }
+
+    pasteEmoji(char) {
+        this.menu.close();
+        const clipboard = St.Clipboard.get_default();
+        clipboard.set_text(CLIPBOARD_TYPE, char);
+
+        this._pastingKeypressTimeout = setTimeout(() => {
+            if (this.keyboard.purpose === Clutter.InputContentPurpose.TERMINAL) {
+                this.keyboard.press(Clutter.KEY_Control_L);
+                this.keyboard.press(Clutter.KEY_Shift_L);
+                this.keyboard.press(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Shift_L);
+                this.keyboard.release(Clutter.KEY_Control_L);
+            } else {
+                this.keyboard.press(Clutter.KEY_Shift_L);
+                this.keyboard.press(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Shift_L);
+            }
+        }, 100);
+    }
+
+    pasteGif(url) {
+        this.menu.close();
+        const clipboard = St.Clipboard.get_default();
+        clipboard.set_text(CLIPBOARD_TYPE, url);
+
+        this._pastingKeypressTimeout = setTimeout(() => {
+            if (this.keyboard.purpose === Clutter.InputContentPurpose.TERMINAL) {
+                this.keyboard.press(Clutter.KEY_Control_L);
+                this.keyboard.press(Clutter.KEY_Shift_L);
+                this.keyboard.press(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Shift_L);
+                this.keyboard.release(Clutter.KEY_Control_L);
+            } else {
+                this.keyboard.press(Clutter.KEY_Shift_L);
+                this.keyboard.press(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Insert);
+                this.keyboard.release(Clutter.KEY_Shift_L);
+            }
+        }, 100);
+    }
+
+    openEmojiPicker() {
+        this.menu.open();
+        this._switchTab('emoji');
     }
 
     #renderEmptyState () {
@@ -1414,6 +1649,9 @@ const ClipboardIndicator = GObject.registerClass({
         SHOW_PIN_BUTTON             = settings.get_boolean(PrefsFields.SHOW_PIN_BUTTON);
         SHOW_EDIT_BUTTON            = settings.get_boolean(PrefsFields.SHOW_EDIT_BUTTON);
         SHOW_PREVIEW_BUTTON         = settings.get_boolean(PrefsFields.SHOW_PREVIEW_BUTTON);
+        EMOJI_ENABLED               = settings.get_boolean(PrefsFields.EMOJI_ENABLED);
+        GIF_ENABLED                 = settings.get_boolean(PrefsFields.GIF_ENABLED);
+        GIF_PROVIDER                = settings.get_string(PrefsFields.GIF_PROVIDER);
     }
 
     async _onSettingsChange () {
@@ -1466,6 +1704,9 @@ const ClipboardIndicator = GObject.registerClass({
         this._bindShortcut(PrefsFields.BINDING_NEXT_ENTRY, this._nextEntry);
         this._bindShortcut(PrefsFields.BINDING_TOGGLE_MENU, this._toggleMenu);
         this._bindShortcut(PrefsFields.BINDING_PRIVATE_MODE, this.togglePrivateMode);
+        if (EMOJI_ENABLED) {
+            this._bindShortcut(PrefsFields.EMOJI_HOTKEY, this.openEmojiPicker);
+        }
     }
 
     _unbindShortcuts () {

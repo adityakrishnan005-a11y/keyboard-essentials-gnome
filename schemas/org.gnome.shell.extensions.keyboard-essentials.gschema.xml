@@ -297,5 +297,29 @@
         <default>true</default>
         <summary>Show the preview button on each image item</summary>
     </key>
+    <key name="emoji-enabled" type="b">
+        <default>false</default>
+        <summary>Enable offline emoji picker</summary>
+    </key>
+    <key name="emoji-hotkey" type="as">
+        <default><![CDATA[['<Super>period']]]></default>
+        <summary>Keybinding to open emoji picker</summary>
+    </key>
+    <key name="gif-enabled" type="b">
+        <default>false</default>
+        <summary>Enable online GIF search</summary>
+    </key>
+    <key name="gif-provider" type="s">
+        <default>'disabled'</default>
+        <summary>GIF provider ('disabled', 'giphy', 'imgur')</summary>
+    </key>
+    <key name="gif-api-key" type="s">
+        <default>''</default>
+        <summary>Custom API key for GIF provider (blank for default)</summary>
+    </key>
+    <key name="gif-recent-limit" type="i">
+        <default>20</default>
+        <summary>Maximum number of recent GIFs to remember</summary>
+    </key>
     </schema>
 </schemalist>
