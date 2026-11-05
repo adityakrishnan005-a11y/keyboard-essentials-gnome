@@ -462,6 +462,19 @@ class Settings {
             show_apply_button: true
         });
 
+        const giphyKeyHelpRow = new Adw.ActionRow({
+            title: _('Get a Free GIPHY API Key'),
+            subtitle: _('Create a free account at developers.giphy.com to generate your personal API key')
+        });
+        const openGiphyBtn = new Gtk.Button({
+            label: _('Open GIPHY'),
+            valign: Gtk.Align.CENTER
+        });
+        openGiphyBtn.connect('clicked', () => {
+            Gio.AppInfo.launch_default_for_uri('https://developers.giphy.com/', null);
+        });
+        giphyKeyHelpRow.add_suffix(openGiphyBtn);
+
         this.field_gif_recent_limit = new Adw.SpinRow({
             title: _('Recent GIFs Limit'),
             subtitle: _('Maximum number of recently used GIFs to remember locally'),
@@ -504,6 +517,7 @@ class Settings {
         this.gif.add(this.field_gif_enabled);
         this.gif.add(this.field_gif_provider);
         this.gif.add(this.field_gif_api_key);
+        this.gif.add(giphyKeyHelpRow);
         this.gif.add(this.field_gif_recent_limit);
         this.gif.add(this.field_gif_clear_cache_row);
 

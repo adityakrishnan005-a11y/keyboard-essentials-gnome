@@ -104,18 +104,10 @@ export class GifPickerSection {
             y_expand: true
         });
 
-        const flowLayout = new Clutter.FlowLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            homogeneous: false,
-            column_spacing: 6,
-            row_spacing: 6
-        });
-
-        this.grid = new St.Widget({
-            layout_manager: flowLayout,
-            style_class: 'ke-gif-grid',
-            x_expand: true,
-            y_expand: true
+        this.grid = new St.BoxLayout({
+            ...boxLayoutProps(true),
+            style_class: 'ke-gif-grid-box',
+            x_expand: true
         });
 
         this.scrollView.add_child(this.grid);
@@ -162,7 +154,13 @@ export class GifPickerSection {
             const text = new TextDecoder('utf-8').decode(bytes.get_data());
             const json = JSON.parse(text);
 
-            if (json.data && Array.isArray(json.data)) {
+            if (json.meta && json.meta.status >= 400) {
+                this.statusLabel.set_text(_('GIPHY: ') + (json.meta.msg || _('API key required')));
+                this._showApiKeyPrompt();
+                return;
+            }
+
+            if (json.data && Array.isArray(json.data) && json.data.length > 0) {
                 const parsed = json.data.map(item => ({
                     id: item.id,
                     title: item.title || 'GIF',
@@ -173,15 +171,60 @@ export class GifPickerSection {
                               item.images?.original?.url
                 }));
                 this._displayGifs(parsed);
+            } else if (json.data && Array.isArray(json.data) && json.data.length === 0) {
+                this._displayGifs([]);
             } else if (json.message) {
                 this.statusLabel.set_text(_('API error: ') + json.message);
+                this._showApiKeyPrompt();
             }
         } catch (e) {
             if (!this._destroyed) {
                 console.error('Keyboard Essentials: GIF fetch error', e);
-                this.statusLabel.set_text(_('Failed to load GIFs (offline or API limit)'));
+                this.statusLabel.set_text(_('Failed to load GIFs (offline or invalid key)'));
+                this._showApiKeyPrompt();
             }
         }
+    }
+
+    _showApiKeyPrompt() {
+        this.grid.destroy_all_children();
+        const box = new St.BoxLayout({
+            ...boxLayoutProps(true),
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            style: 'padding: 24px;'
+        });
+
+        box.add_child(new St.Icon({
+            icon_name: 'dialog-password-symbolic',
+            icon_size: 32,
+            style: 'opacity: 0.6; margin-bottom: 8px;',
+            x_align: Clutter.ActorAlign.CENTER
+        }));
+
+        box.add_child(new St.Label({
+            text: _('GIPHY API Key Required'),
+            style: 'font-weight: bold; margin-bottom: 4px;',
+            x_align: Clutter.ActorAlign.CENTER
+        }));
+
+        box.add_child(new St.Label({
+            text: _('Add your free API key in Settings to search GIFs.'),
+            style: 'font-size: 0.85em; opacity: 0.7; margin-bottom: 12px; text-align: center;',
+            x_align: Clutter.ActorAlign.CENTER
+        }));
+
+        const settingsBtn = new St.Button({
+            label: _('Open Settings'),
+            style_class: 'button ke-action-button',
+            x_align: Clutter.ActorAlign.CENTER
+        });
+        settingsBtn.connect('clicked', () => {
+            this.indicator._openSettings();
+        });
+        box.add_child(settingsBtn);
+
+        this.grid.add_child(box);
     }
 
     _displayGifs(gifList) {
@@ -190,47 +233,59 @@ export class GifPickerSection {
         if (gifList.length === 0) {
             const emptyLabel = new St.Label({
                 text: _('No GIFs found'),
-                style: 'opacity: 0.6; margin: 20px;',
+                style: 'opacity: 0.6; margin: 30px;',
                 x_align: Clutter.ActorAlign.CENTER
             });
             this.grid.add_child(emptyLabel);
             return;
         }
 
-        gifList.forEach(gif => {
-            const btn = new St.Button({
-                style_class: 'ke-gif-thumb-btn',
-                can_focus: true,
-                accessible_name: gif.title
+        const COLS = 2;
+        for (let i = 0; i < gifList.length; i += COLS) {
+            const rowSlice = gifList.slice(i, i + COLS);
+            const rowBox = new St.BoxLayout({
+                ...boxLayoutProps(false),
+                style_class: 'ke-gif-row',
+                x_expand: true
             });
 
-            const placeholder = new St.Icon({
-                icon_name: 'video-x-generic-symbolic',
-                style_class: 'ke-gif-placeholder',
-                icon_size: 32
-            });
-
-            btn.set_child(placeholder);
-
-            btn.connect('clicked', () => {
-                this._addRecent(gif);
-                this.indicator.pasteGif(gif.url);
-            });
-
-            this.grid.add_child(btn);
-
-            // Asynchronously load thumbnail image
-            this._loadThumbnail(gif.thumbUrl).then(localPath => {
-                if (this._destroyed || !localPath) return;
-                const gicon = Gio.icon_new_for_string(localPath);
-                const thumbIcon = new St.Icon({
-                    gicon,
-                    style_class: 'ke-gif-image'
+            rowSlice.forEach(gif => {
+                const btn = new St.Button({
+                    style_class: 'ke-gif-thumb-btn',
+                    can_focus: true,
+                    accessible_name: gif.title
                 });
-                btn.set_child(thumbIcon);
-            }).catch(e => {
-                // Keep placeholder on error
+
+                const placeholder = new St.Icon({
+                    icon_name: 'video-x-generic-symbolic',
+                    style_class: 'ke-gif-placeholder',
+                    icon_size: 32
+                });
+
+                btn.set_child(placeholder);
+
+                btn.connect('clicked', () => {
+                    this._addRecent(gif);
+                    this.indicator.pasteGif(gif.url);
+                });
+
+                rowBox.add_child(btn);
+
+                // Asynchronously load thumbnail image
+                this._loadThumbnail(gif.thumbUrl).then(localPath => {
+                    if (this._destroyed || !localPath) return;
+                    const gicon = Gio.icon_new_for_string(localPath);
+                    const thumbIcon = new St.Icon({
+                        gicon,
+                        style_class: 'ke-gif-image'
+                    });
+                    btn.set_child(thumbIcon);
+                }).catch(() => {});
             });
+
+            this.grid.add_child(rowBox);
+        }
+    }
         });
     }
 

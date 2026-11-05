@@ -89,18 +89,10 @@ export class EmojiPickerSection {
             y_expand: true
         });
 
-        const flowLayout = new Clutter.FlowLayout({
-            orientation: Clutter.Orientation.HORIZONTAL,
-            homogeneous: true,
-            column_spacing: 4,
-            row_spacing: 4
-        });
-
-        this.grid = new St.Widget({
-            layout_manager: flowLayout,
-            style_class: 'ke-emoji-grid',
-            x_expand: true,
-            y_expand: true
+        this.grid = new St.BoxLayout({
+            ...boxLayoutProps(true),
+            style_class: 'ke-emoji-grid-box',
+            x_expand: true
         });
 
         this.scrollView.add_child(this.grid);
@@ -269,27 +261,36 @@ export class EmojiPickerSection {
             });
         }
 
-        // Limit rendering to first 120 items for snappy performance
-        const renderSlice = filtered.slice(0, 120);
+        // Limit rendering to first 160 items for snappy performance
+        const renderSlice = filtered.slice(0, 160);
+        const COLS = 8;
 
-        renderSlice.forEach(emoji => {
-            const btn = new St.Button({
-                style_class: 'ke-emoji-btn',
-                can_focus: true,
-                accessible_name: emoji.name,
-                child: new St.Label({
-                    text: emoji.char,
-                    style_class: 'ke-emoji-char'
-                })
+        for (let i = 0; i < renderSlice.length; i += COLS) {
+            const rowSlice = renderSlice.slice(i, i + COLS);
+            const rowBox = new St.BoxLayout({
+                ...boxLayoutProps(false),
+                style_class: 'ke-emoji-row',
+                x_expand: true
             });
 
-            btn.connect('clicked', () => {
-                this._addRecent(emoji.char);
-                this.indicator.pasteEmoji(emoji.char);
+            rowSlice.forEach(emoji => {
+                const btn = new St.Button({
+                    label: emoji.char,
+                    style_class: 'ke-emoji-btn',
+                    can_focus: true,
+                    accessible_name: emoji.name
+                });
+
+                btn.connect('clicked', () => {
+                    this._addRecent(emoji.char);
+                    this.indicator.pasteEmoji(emoji.char);
+                });
+
+                rowBox.add_child(btn);
             });
 
-            this.grid.add_child(btn);
-        });
+            this.grid.add_child(rowBox);
+        }
     }
 
     _loadRecents() {
