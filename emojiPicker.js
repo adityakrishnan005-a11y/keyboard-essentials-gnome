@@ -93,9 +93,7 @@ export class EmojiPickerSection {
             orientation: Clutter.Orientation.HORIZONTAL,
             homogeneous: true,
             column_spacing: 4,
-            row_spacing: 4,
-            min_line_length: 340,
-            max_line_length: 380
+            row_spacing: 4
         });
 
         this.grid = new St.Widget({

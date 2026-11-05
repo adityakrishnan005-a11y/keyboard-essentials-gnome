@@ -108,9 +108,7 @@ export class GifPickerSection {
             orientation: Clutter.Orientation.HORIZONTAL,
             homogeneous: false,
             column_spacing: 6,
-            row_spacing: 6,
-            min_line_length: 340,
-            max_line_length: 380
+            row_spacing: 6
         });
 
         this.grid = new St.Widget({
