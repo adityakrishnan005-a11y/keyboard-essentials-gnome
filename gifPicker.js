@@ -286,8 +286,6 @@ export class GifPickerSection {
             this.grid.add_child(rowBox);
         }
     }
-        });
-    }
 
     async _loadThumbnail(url) {
         if (!url) return null;

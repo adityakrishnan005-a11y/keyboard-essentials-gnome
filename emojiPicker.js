@@ -119,16 +119,17 @@ export class EmojiPickerSection {
         const dataPath = this._getDataPath();
         let file = Gio.File.new_for_path(dataPath);
 
-        // Fallback to local extension data if user installed from repo
+        // Fallback: try bundled data next to the extension's JS files
         if (!file.query_exists(null)) {
-            const bundledPath = GLib.build_filenamev([
-                this.indicator.extension.path,
-                'data',
-                'emoji-data.json'
-            ]);
-            const bundledFile = Gio.File.new_for_path(bundledPath);
-            if (bundledFile.query_exists(null)) {
-                file = bundledFile;
+            // __filename gives us the path of this module file inside the extension
+            try {
+                const moduleFile = Gio.File.new_for_uri(import.meta.url);
+                const bundledFile = moduleFile.get_parent().get_child('data').get_child('emoji-data.json');
+                if (bundledFile.query_exists(null)) {
+                    file = bundledFile;
+                }
+            } catch (e) {
+                // ignore
             }
         }
 

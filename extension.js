@@ -111,10 +111,12 @@ const ClipboardIndicator = GObject.registerClass({
         if (this.emojiPicker) {
             this.emojiPicker.destroy();
             this.emojiPicker = null;
+            this._emojiMenuItem = null;
         }
         if (this.gifPicker) {
             this.gifPicker.destroy();
             this.gifPicker = null;
+            this._gifMenuItem = null;
         }
 
         super.destroy();
@@ -136,6 +138,8 @@ const ClipboardIndicator = GObject.registerClass({
         this.currentTab = 'clipboard';
         this.emojiPicker = null;
         this.gifPicker = null;
+        this._emojiMenuItem = null;
+        this._gifMenuItem = null;
         this.registry = new Registry(extension);
         this.keyboard = new Keyboard();
         this._settingsChangedId = null;
@@ -475,10 +479,10 @@ const ClipboardIndicator = GObject.registerClass({
         }
         if (this.tabBarItem && this.menu.box.contains(this.tabBarItem))
             this.menu.box.remove_child(this.tabBarItem);
-        if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor))
-            this.menu.box.remove_child(this.emojiPicker.actor);
-        if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor))
-            this.menu.box.remove_child(this.gifPicker.actor);
+        if (this._emojiMenuItem && this.menu.box.contains(this._emojiMenuItem))
+            this.menu.box.remove_child(this._emojiMenuItem);
+        if (this._gifMenuItem && this.menu.box.contains(this._gifMenuItem))
+            this.menu.box.remove_child(this._gifMenuItem);
         if (this.menu.box.contains(this._entryItem)) this.menu.box.remove_child(this._entryItem);
         if (this.menu.box.contains(this.favoritesSeparator)) this.menu.box.remove_child(this.favoritesSeparator);
         if (this.menu.box.contains(this.historySeparator)) this.menu.box.remove_child(this.historySeparator);
@@ -520,15 +524,15 @@ const ClipboardIndicator = GObject.registerClass({
             this.scrollViewFavoritesMenuSection.actor.visible = false;
             this.scrollViewMenuSection.actor.visible = false;
 
-            if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor)) {
-                this.menu.box.remove_child(this.gifPicker.actor);
+            if (this._gifMenuItem && this.menu.box.contains(this._gifMenuItem)) {
+                this.menu.box.remove_child(this._gifMenuItem);
             }
 
             const emojiPicker = this._getEmojiPicker();
-            if (!this.menu.box.contains(emojiPicker.actor)) {
-                this.menu.box.insert_child_at_index(emojiPicker.actor, 1);
+            if (!this.menu.box.contains(this._emojiMenuItem)) {
+                this.menu.box.insert_child_at_index(this._emojiMenuItem, 1);
             }
-            emojiPicker.actor.visible = true;
+            this._emojiMenuItem.visible = true;
 
             if (this.menu.box.contains(this.settingsMenuItem?.actor))
                 this.menu.box.remove_child(this.settingsMenuItem.actor);
@@ -549,15 +553,15 @@ const ClipboardIndicator = GObject.registerClass({
             this.scrollViewFavoritesMenuSection.actor.visible = false;
             this.scrollViewMenuSection.actor.visible = false;
 
-            if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor)) {
-                this.menu.box.remove_child(this.emojiPicker.actor);
+            if (this._emojiMenuItem && this.menu.box.contains(this._emojiMenuItem)) {
+                this.menu.box.remove_child(this._emojiMenuItem);
             }
 
             const gifPicker = this._getGifPicker();
-            if (!this.menu.box.contains(gifPicker.actor)) {
-                this.menu.box.insert_child_at_index(gifPicker.actor, 1);
+            if (!this.menu.box.contains(this._gifMenuItem)) {
+                this.menu.box.insert_child_at_index(this._gifMenuItem, 1);
             }
-            gifPicker.actor.visible = true;
+            this._gifMenuItem.visible = true;
 
             if (this.menu.box.contains(this.settingsMenuItem?.actor))
                 this.menu.box.remove_child(this.settingsMenuItem.actor);
@@ -568,11 +572,11 @@ const ClipboardIndicator = GObject.registerClass({
         }
 
         // CurrentTab is 'clipboard'
-        if (this.emojiPicker?.actor && this.menu.box.contains(this.emojiPicker.actor)) {
-            this.menu.box.remove_child(this.emojiPicker.actor);
+        if (this._emojiMenuItem && this.menu.box.contains(this._emojiMenuItem)) {
+            this.menu.box.remove_child(this._emojiMenuItem);
         }
-        if (this.gifPicker?.actor && this.menu.box.contains(this.gifPicker.actor)) {
-            this.menu.box.remove_child(this.gifPicker.actor);
+        if (this._gifMenuItem && this.menu.box.contains(this._gifMenuItem)) {
+            this.menu.box.remove_child(this._gifMenuItem);
         }
         this.scrollViewFavoritesMenuSection.actor.visible = !PRIVATEMODE;
         this.scrollViewMenuSection.actor.visible = !PRIVATEMODE;
@@ -673,6 +677,13 @@ const ClipboardIndicator = GObject.registerClass({
     _getEmojiPicker() {
         if (!this.emojiPicker) {
             this.emojiPicker = new EmojiPickerSection(this);
+            // Wrap in a PopupBaseMenuItem for proper allocation in PopupMenu
+            this._emojiMenuItem = new PopupMenu.PopupBaseMenuItem({
+                reactive: false,
+                can_focus: false,
+                style_class: 'ke-picker-menu-item'
+            });
+            this._emojiMenuItem.add_child(this.emojiPicker.actor);
         }
         return this.emojiPicker;
     }
@@ -680,6 +691,13 @@ const ClipboardIndicator = GObject.registerClass({
     _getGifPicker() {
         if (!this.gifPicker) {
             this.gifPicker = new GifPickerSection(this);
+            // Wrap in a PopupBaseMenuItem for proper allocation in PopupMenu
+            this._gifMenuItem = new PopupMenu.PopupBaseMenuItem({
+                reactive: false,
+                can_focus: false,
+                style_class: 'ke-picker-menu-item'
+            });
+            this._gifMenuItem.add_child(this.gifPicker.actor);
         }
         return this.gifPicker;
     }
