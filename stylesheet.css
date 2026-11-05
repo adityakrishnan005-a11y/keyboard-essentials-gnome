@@ -1,4 +1,4 @@
-.clipboard-indicator-hbox.private-mode {
+.keyboard-essentials-hbox.private-mode {
     color: rgba(255,255,255,0.3);
 }
 
@@ -26,17 +26,17 @@
     margin:0 .25em;
 }
 
-.clipboard-indicator-empty-state {
+.keyboard-essentials-empty-state {
     width:350px;
     color:#aaa;
 }
 
-.clipboard-indicator-empty-state StIcon {
+.keyboard-essentials-empty-state StIcon {
     icon-size:5em;
     margin-top:3em;
 }
 
-.clipboard-indicator-empty-state StLabel {
+.keyboard-essentials-empty-state StLabel {
     margin:1em 0 3em 0;
 }
 
@@ -67,18 +67,18 @@
     padding:0;
 }
 
-.clipboard-indicator-img-preview {
+.keyboard-essentials-img-preview {
     border:solid 1px white;
     width:1em;
     height:1em;
     margin-right:.25em;
 }
 
-.clipboard-indicator-hbox {
+.keyboard-essentials-hbox {
     transition: background-color 150ms ease-in-out;
 }
 
-.clipboard-indicator-hbox .clipboard-indicator-icon {
+.keyboard-essentials-hbox .keyboard-essentials-icon {
     transition: color 150ms ease-in-out;
 }
 

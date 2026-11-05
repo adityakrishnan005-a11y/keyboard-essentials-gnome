@@ -7,10 +7,11 @@
         "50",
         "51"
     ],
-    "uuid": "clipboard-indicator@tudmotu.com",
-    "name": "Clipboard Indicator",
-    "description": "The most popular clipboard manager for GNOME, with over 1M downloads",
-    "url": "https://github.com/Tudmotu/gnome-shell-extension-clipboard-indicator",
-    "gettext-domain": "clipboard-indicator",
-    "settings-schema": "org.gnome.shell.extensions.clipboard-indicator"
+    "uuid": "keyboard-essentials@aditya",
+    "name": "Keyboard Essentials for GNOME",
+    "description": "A keyboard productivity suite for GNOME — clipboard history, emoji picker, offline voice typing, and a persistent thesaurus suggestion bar.",
+    "url": "https://github.com/adityakrishnan005-a11y/keyboard-essentials-gnome",
+    "gettext-domain": "keyboard-essentials",
+    "settings-schema": "org.gnome.shell.extensions.keyboard-essentials",
+    "version": 1
 }

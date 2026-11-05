@@ -132,14 +132,14 @@ const ClipboardIndicator = GObject.registerClass({
         this.clipItemsRadioGroup = [];
 
         let hbox = new St.BoxLayout({
-            style_class: 'panel-status-menu-box clipboard-indicator-hbox'
+            style_class: 'panel-status-menu-box keyboard-essentials-hbox'
         });
 
         this.hbox = hbox;
 
         this.icon = new St.Icon({
             icon_name: INDICATOR_ICON,
-            style_class: 'system-status-icon clipboard-indicator-icon'
+            style_class: 'system-status-icon keyboard-essentials-icon'
         });
 
         this._buttonText = new St.Label({
@@ -148,7 +148,7 @@ const ClipboardIndicator = GObject.registerClass({
         });
 
         this._buttonImgPreview = new St.Bin({
-            style_class: 'clipboard-indicator-topbar-preview'
+            style_class: 'keyboard-essentials-topbar-preview'
         });
 
         hbox.add_child(this.icon);
@@ -190,7 +190,7 @@ const ClipboardIndicator = GObject.registerClass({
                 this._buttonText.set_text('');
                 this._buttonImgPreview.destroy_all_children();
                 this.registry.getEntryAsImage(entry).then(img => {
-                    img.add_style_class_name('clipboard-indicator-img-preview');
+                    img.add_style_class_name('keyboard-essentials-img-preview');
                     img.y_align = Clutter.ActorAlign.CENTER;
 
                     // icon only renders properly in setTimeout for some arcane reason
@@ -387,12 +387,12 @@ const ClipboardIndicator = GObject.registerClass({
 
         // Empty state section
         this.emptyStateSection = new St.BoxLayout({
-            style_class: 'clipboard-indicator-empty-state',
+            style_class: 'keyboard-essentials-empty-state',
             ...boxLayoutProps(true)
         });
         this.emptyStateSection.add_child(new St.Icon({
             icon_name: INDICATOR_ICON,
-            style_class: 'system-status-icon clipboard-indicator-icon',
+            style_class: 'system-status-icon keyboard-essentials-icon',
             x_align: Clutter.ActorAlign.CENTER
         }));
         this.emptyStateSection.add_child(new St.Label({
@@ -1045,7 +1045,7 @@ const ClipboardIndicator = GObject.registerClass({
             }
         }
         catch (e) {
-            console.error('Clipboard Indicator: Failed to refresh indicator');
+            console.error('Keyboard Essentials: Failed to refresh indicator');
             console.error(e);
         }
         finally {
@@ -1242,7 +1242,7 @@ const ClipboardIndicator = GObject.registerClass({
     _initNotifSource () {
         if (!this._notifSource) {
             this._notifSource = new MessageTray.Source({
-                title: 'Clipboard Indicator',
+                title: 'Keyboard Essentials',
                 'icon-name': INDICATOR_ICON
             });
 
@@ -1454,7 +1454,7 @@ const ClipboardIndicator = GObject.registerClass({
             // Respect UI toggles
             this.#showElements();
         } catch (e) {
-            console.error('Clipboard Indicator: Failed to update registry');
+            console.error('Keyboard Essentials: Failed to update registry');
             console.error(e);
         }
     }
@@ -1737,7 +1737,7 @@ const ClipboardIndicator = GObject.registerClass({
 
             bin.set_child(actor);
         }).catch(e => {
-            console.error('Clipboard Indicator: failed to load image preview');
+            console.error('Keyboard Essentials: failed to load image preview');
             console.error(e);
         });
     }

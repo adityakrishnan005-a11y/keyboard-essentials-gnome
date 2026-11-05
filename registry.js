@@ -127,7 +127,7 @@ export class Registry {
                             });
                         }
                         else {
-                            console.error('Clipboard Indicator: failed to open registry file');
+                            console.error('Keyboard Essentials: failed to open registry file');
                         }
                     });
                 });
@@ -273,7 +273,7 @@ export class ClipboardEntry {
                     }
                     else {
                         reject(
-                            new Error('Clipboard Indicator: could not read image file from cache')
+                            new Error('Keyboard Essentials: could not read image file from cache')
                         );
                     }
                 }));
