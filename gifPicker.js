@@ -81,6 +81,7 @@ export class GifPickerSection {
             }
             this._searchTimeout = setTimeout(() => {
                 const query = this.searchEntry.get_text().trim();
+                this._activeQuery = '';
                 this._fetchGifs(query);
             }, 350);
         });
@@ -96,7 +97,72 @@ export class GifPickerSection {
         });
         this.actor.add_child(this.statusLabel);
 
-        // Scroll view for GIF grid
+        // === PREVIEW PANEL (hidden by default) ===
+        this.previewPanel = new St.BoxLayout({
+            ...boxLayoutProps(true),
+            style_class: 'ke-gif-preview-panel',
+            x_expand: true,
+            visible: false
+        });
+
+        // Back button row
+        const previewHeader = new St.BoxLayout({
+            ...boxLayoutProps(false),
+            style_class: 'ke-gif-preview-header',
+            x_expand: true
+        });
+
+        const backBtn = new St.Button({
+            style_class: 'ke-gif-back-btn',
+            can_focus: true,
+            child: new St.BoxLayout({
+                ...boxLayoutProps(false),
+                style_class: 'ke-gif-back-inner'
+            })
+        });
+        const backInner = backBtn.get_child();
+        backInner.add_child(new St.Icon({ icon_name: 'go-previous-symbolic', icon_size: 14 }));
+        backInner.add_child(new St.Label({ text: _(' Back') }));
+        backBtn.connect('clicked', () => this._closePreview());
+        previewHeader.add_child(backBtn);
+
+        this.previewTitle = new St.Label({
+            text: '',
+            style_class: 'ke-gif-preview-title',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.CENTER
+        });
+        previewHeader.add_child(this.previewTitle);
+        this.previewPanel.add_child(previewHeader);
+
+        // Large preview image
+        this.previewImage = new St.Icon({
+            style_class: 'ke-gif-preview-image',
+            icon_name: 'video-x-generic-symbolic',
+            icon_size: 64,
+            x_align: Clutter.ActorAlign.CENTER
+        });
+        this.previewPanel.add_child(this.previewImage);
+
+        // Paste button
+        const pasteBtn = new St.Button({
+            label: _('📋  Paste GIF link'),
+            style_class: 'button ke-action-button ke-gif-paste-btn',
+            can_focus: true,
+            x_align: Clutter.ActorAlign.CENTER
+        });
+        pasteBtn.connect('clicked', () => {
+            if (this._previewGif) {
+                this._addRecent(this._previewGif);
+                this.indicator.pasteGif(this._previewGif.url);
+                this._closePreview();
+            }
+        });
+        this.previewPanel.add_child(pasteBtn);
+
+        this.actor.add_child(this.previewPanel);
+
+        // === SCROLL VIEW for GIF grid ===
         this.scrollView = new St.ScrollView({
             style_class: 'ke-gif-scroll-view',
             overlay_scrollbars: true,
@@ -112,6 +178,33 @@ export class GifPickerSection {
 
         this.scrollView.add_child(this.grid);
         this.actor.add_child(this.scrollView);
+    }
+
+    _openPreview(gif) {
+        this._previewGif = gif;
+        this.previewTitle.set_text(gif.title || 'GIF');
+        // Reset to placeholder while loading
+        this.previewImage.gicon = null;
+        this.previewImage.icon_name = 'video-x-generic-symbolic';
+        this.previewImage.icon_size = 64;
+
+        this.scrollView.visible = false;
+        this.previewPanel.visible = true;
+
+        // Load larger image for preview (use original URL or thumbUrl)
+        const previewUrl = gif.url || gif.thumbUrl;
+        this._loadThumbnail(previewUrl).then(localPath => {
+            if (this._destroyed || !this._previewGif || !localPath) return;
+            this.previewImage.gicon = Gio.icon_new_for_string(localPath);
+            this.previewImage.icon_name = null;
+            this.previewImage.icon_size = 300;
+        }).catch(() => {});
+    }
+
+    _closePreview() {
+        this._previewGif = null;
+        this.previewPanel.visible = false;
+        this.scrollView.visible = true;
     }
 
     async initContent() {
@@ -229,6 +322,7 @@ export class GifPickerSection {
 
     _displayGifs(gifList) {
         this.grid.destroy_all_children();
+        this._closePreview();
 
         if (gifList.length === 0) {
             const emptyLabel = new St.Label({
@@ -240,51 +334,39 @@ export class GifPickerSection {
             return;
         }
 
-        const COLS = 2;
-        for (let i = 0; i < gifList.length; i += COLS) {
-            const rowSlice = gifList.slice(i, i + COLS);
-            const rowBox = new St.BoxLayout({
-                ...boxLayoutProps(false),
-                style_class: 'ke-gif-row',
-                x_expand: true
+        // Single-column layout — one large card per row
+        gifList.forEach(gif => {
+            const btn = new St.Button({
+                style_class: 'ke-gif-thumb-btn',
+                can_focus: true,
+                x_expand: true,
+                accessible_name: gif.title
             });
 
-            rowSlice.forEach(gif => {
-                const btn = new St.Button({
-                    style_class: 'ke-gif-thumb-btn',
-                    can_focus: true,
-                    accessible_name: gif.title
-                });
+            const placeholder = new St.Icon({
+                icon_name: 'video-x-generic-symbolic',
+                style_class: 'ke-gif-placeholder',
+                icon_size: 48
+            });
+            btn.set_child(placeholder);
 
-                const placeholder = new St.Icon({
-                    icon_name: 'video-x-generic-symbolic',
-                    style_class: 'ke-gif-placeholder',
-                    icon_size: 32
-                });
-
-                btn.set_child(placeholder);
-
-                btn.connect('clicked', () => {
-                    this._addRecent(gif);
-                    this.indicator.pasteGif(gif.url);
-                });
-
-                rowBox.add_child(btn);
-
-                // Asynchronously load thumbnail image
-                this._loadThumbnail(gif.thumbUrl).then(localPath => {
-                    if (this._destroyed || !localPath) return;
-                    const gicon = Gio.icon_new_for_string(localPath);
-                    const thumbIcon = new St.Icon({
-                        gicon,
-                        style_class: 'ke-gif-image'
-                    });
-                    btn.set_child(thumbIcon);
-                }).catch(() => {});
+            // Click → open preview panel instead of pasting directly
+            btn.connect('clicked', () => {
+                this._openPreview(gif);
             });
 
-            this.grid.add_child(rowBox);
-        }
+            this.grid.add_child(btn);
+
+            // Async thumbnail load
+            this._loadThumbnail(gif.thumbUrl).then(localPath => {
+                if (this._destroyed || !localPath) return;
+                const thumbIcon = new St.Icon({
+                    gicon: Gio.icon_new_for_string(localPath),
+                    style_class: 'ke-gif-image'
+                });
+                btn.set_child(thumbIcon);
+            }).catch(() => {});
+        });
     }
 
     async _loadThumbnail(url) {

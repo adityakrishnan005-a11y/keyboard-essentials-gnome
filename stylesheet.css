@@ -217,13 +217,15 @@
     spacing: 8px;
 }
 
+/* Single-column large thumbnail card */
 .ke-gif-thumb-btn {
-    width: 176px;
-    height: 110px;
-    border-radius: 8px;
+    width: 356px;
+    height: 180px;
+    border-radius: 10px;
     overflow: hidden;
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.06);
     padding: 0;
+    margin-bottom: 2px;
 }
 
 .ke-gif-thumb-btn:hover {
@@ -231,12 +233,55 @@
 }
 
 .ke-gif-image {
-    width: 176px;
-    height: 110px;
+    width: 356px;
+    height: 180px;
+    border-radius: 10px;
 }
 
 .ke-gif-placeholder {
     opacity: 0.4;
+}
+
+/* Preview panel */
+.ke-gif-preview-panel {
+    padding: 4px;
+}
+
+.ke-gif-preview-header {
+    spacing: 6px;
+    margin-bottom: 8px;
+}
+
+.ke-gif-back-btn {
+    padding: 4px 10px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.ke-gif-back-btn:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+.ke-gif-back-inner {
+    spacing: 2px;
+}
+
+.ke-gif-preview-title {
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+.ke-gif-preview-image {
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    width: 356px;
+    height: 220px;
+    x-align: center;
+}
+
+.ke-gif-paste-btn {
+    margin-top: 10px;
+    align-self: center;
 }
 
 .ke-action-button {
