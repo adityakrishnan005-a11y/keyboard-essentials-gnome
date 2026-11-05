@@ -1,12 +1,13 @@
 import Clutter from 'gi://Clutter';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import { getDefaultBackend } from './compat.js';
 
 export class Keyboard {
     #device;
     #contentPurpose;
 
     constructor () {
-        let seat = Clutter.get_default_backend().get_default_seat();
+        let seat = getDefaultBackend().get_default_seat();
         this.#device = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
 
         Main.inputMethod.connectObject('notify::content-purpose', (method) => {
